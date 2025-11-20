@@ -1,0 +1,12 @@
+{
+  "name": "t2",
+  "version": "1.0.0",
+  "description": "Simple React GitHub user search app (no build tools)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

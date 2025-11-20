@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>GitHub User Search — Simple</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + ReactDOM UMD -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel for in-browser JSX (ONLY for local/dev use) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- App code (JSX) -->
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // debounce utility
+    function debounce(fn, ms = 300) {
+      let t;
+      return (...args) => {
+        clearTimeout(t);
+        t = setTimeout(() => fn(...args), ms);
+      };
+    }
+
+    // GitHub search service
+    async function searchGithubUsers(q, { page = 1, per_page = 30 } = {}) {
+      if (!q) return { total_count: 0, items: [] };
+      const url = `https://api.github.com/search/users?q=${encodeURIComponent(q)}&page=${page}&per_page=${per_page}`;
+      const res = await fetch(url, { headers: { Accept: "application/vnd.github.v3+json" } });
+      if (!res.ok) {
+        const t = await res.text().catch(()=>"");
+        throw new Error(t || `GitHub API error ${res.status}`);
+      }
+      return res.json();
+    }
+
+    // Components
+    function SearchBar({ onSearch }) {
+      const [value, setValue] = useState("");
+      const debounced = useRef(null);
+
+      useEffect(() => {
+        debounced.current = debounce((v) => onSearch(v.trim()), 450);
+      }, [onSearch]);
+
+      function handleChange(e) {
+        setValue(e.target.value);
+        debounced.current && debounced.current(e.target.value);
+      }
+
+      function submit(e) {
+        e.preventDefault();
+        onSearch(value.trim());
+      }
+
+      return (
+        <form className="search-row" onSubmit={submit}>
+          <input className="search-input" placeholder="Search GitHub users (e.g. torvalds, octocat)" value={value} onChange={handleChange} />
+          <button className="search-btn" type="submit">Search</button>
+        </form>
+      );
+    }
+
+    function UserCard({ user }) {
+      return (
+        <a className="user-card" href={user.html_url} target="_blank" rel="noreferrer">
+          <img className="avatar" src={user.avatar_url} alt={`${user.login} avatar`} />
+          <div className="user-info">
+            <div className="login">{user.login}</div>
+            <div className="type">{user.type}</div>
+            <div className="meta">Score: {Math.round((user.score||0)*100)/100}</div>
+          </div>
+        </a>
+      );
+    }
+
+    function ResultsList({ users }) {
+      if (!users || users.length === 0) {
+        return <div className="loading">No results to show.</div>;
+      }
+      return (
+        <div className="results-grid">
+          {users.map(u => <UserCard key={u.id} user={u} />)}
+        </div>
+      );
+    }
+
+    function Pagination({ page, perPage, total, onPageChange }) {
+      if (!total) return null;
+      const last = Math.ceil(Math.min(total, 1000) / perPage);
+      return (
+        <div className="pagination">
+          <div>Showing page {page} of {last} — {total} results</div>
+          <div>
+            <button className="page-btn" disabled={page<=1} onClick={() => onPageChange(page-1)}>Prev</button>
+            <button className="page-btn" disabled={page>=last} onClick={() => onPageChange(page+1)} style={{marginLeft:8}}>Next</button>
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const [query, setQuery] = useState("");
+      const [users, setUsers] = useState([]);
+      const [total, setTotal] = useState(0);
+      const [page, setPage] = useState(1);
+      const perPage = 30;
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState("");
+
+      useEffect(() => {
+        if (!query) {
+          setUsers([]);
+          setTotal(0);
+          setError("");
+          return;
+        }
+        setLoading(true);
+        setError("");
+        searchGithubUsers(query, { page, per_page: perPage })
+          .then(res => {
+            setUsers(res.items || []);
+            setTotal(res.total_count || 0);
+          })
+          .catch(err => {
+            console.error(err);
+            setError(err.message || "Failed to fetch");
+          })
+          .finally(() => setLoading(false));
+      }, [query, page]);
+
+      return (
+        <div className="app-root">
+          <div className="container">
+            <header>
+              <h1>GitHub User Search</h1>
+              <p className="subtitle">Simple React app — no build tools.</p>
+            </header>
+
+            <SearchBar onSearch={(q) => { setPage(1); setQuery(q); }} />
+
+            <main>
+              {error && <div className="error">Error: {error}</div>}
+              {loading && <div className="loading">Loading…</div>}
+
+              <ResultsList users={users} />
+
+              <Pagination page={page} perPage={perPage} total={total} onPageChange={(p) => setPage(p)} />
+            </main>
+
+            <footer className="footer-note">Note: GitHub search is unauthenticated — low rate limit. For more calls use a server proxy with a GitHub token (optional).</footer>
+          </div>
+        </div>
+      );
+    }
+
+    // render
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App />);
+  </script>
+</body>
+</html>
